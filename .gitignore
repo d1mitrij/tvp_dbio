@@ -1,3 +1,6 @@
+# Project data (raw input files — not tracked in version control)
+data/
+
 # Python
 __pycache__/
 *.py[cod]
