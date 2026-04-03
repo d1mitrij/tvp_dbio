@@ -63,14 +63,6 @@ tvp_dbio/
 │   ├── hydro_finance_input.csv
 │   └── assumptions.txt
 │
-├── data/                       ← Benchmark outputs and reference data
-│   ├── 20260317_Data_Greenings_clean_NG.xlsx
-│   ├── rail.csv
-│   ├── hospitals.csv
-│   ├── hydro_power_plant.csv
-│   ├── supply_chain_tiers*.csv
-│   └── fastinfra_benchmark*.csv
-│
 ├── output/                     ← Computed results
 │   └── rail_tier_analysis.json
 │
