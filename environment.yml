@@ -1,0 +1,25 @@
+name: env_dbio
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Python
+  - python=3.11
+
+  # Core scientific stack
+  - numpy>=1.26
+  - pandas>=2.1
+  - matplotlib>=3.8
+
+  # Jupyter
+  - jupyterlab>=4.0
+  - ipykernel>=6.0
+  - nbformat>=5.9
+
+  # MRIO / IO analysis (pip-only packages)
+  - pip
+  - pip:
+      - pymrio>=0.6.3       # Multi-Regional Input-Output framework
+      - iopy>=0.2.4         # MRIO database auto-download cache (OECD, ExioBase)

@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoint
+
+# Large IO database files (~800 MB each — download via download_iodb.py)
+input_iodb/exiobase/
+input_iodb/eora26/
+input_iodb/oecd/
+input_iodb/wiod/
+input_iodb/figaro/
+input_iodb/iopy_cache/
+
+# Old iopy/mario analysis outputs (large binary data)
+old/iopy_analysis/
+old/mario_analysis/
+
+# Claude session data
+.claude/
+
+# Conda environments
+.conda/
+*.conda
+
+# Byte-order marks, OS noise
+.DS_Store
+Thumbs.db
+*.orig
