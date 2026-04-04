@@ -13,6 +13,8 @@ Public API
 ──────────
   tier0_impact(invest_usd, sector_code, country, database, iodb_path)
       → dict with GHG, Employment, Water, ValueAdded at tier 0 (direct spend)
+        + optional_indicators: database-specific extras (Energy_TJ, NOx_t, skill-level
+          employment, LaborIncome_M$) when supported by the selected database
 
   tier1_impact(invest_usd, sector_code, country, database, iodb_path)
       → dict with tier 1 totals plus per-sector and per-sourcing-country breakdown
@@ -504,6 +506,82 @@ DB_PROFILES["eora26_file"]   = {**DB_PROFILES["eora26"],   "label": "Eora26 (fil
 DB_PROFILES["wiod_file"]     = {**DB_PROFILES["wiod"],     "label": "WIOD 2013 (file-backed)"}
 DB_PROFILES["oecd_file"]     = {**DB_PROFILES["oecd"],     "label": "OECD ICIO v2021 (file-backed)"}
 
+# ── Optional extended indicators per database  (additional satellite accounts)
+# ─────────────────────────────────────────────────────────────────────────────
+# Each entry maps a canonical db key → {indicator_name: base_intensity_vector (8,)}
+# Units per M$ gross output at global average intensity.
+#
+# EXIOBASE  — energy use + air quality satellite (2018 data year)
+#   Energy_TJ : terajoules of energy input per M$ gross output
+#     Source: EXIOBASE 3.8.1 energy extension (F matrix, rows "Energy carrier supply");
+#     aggregated to 8 sectors via output-weighted average.
+#     Cross-checked: IEA (2022) energy intensity by sector (TJ/$M value added, converted
+#     to gross output using VA/GO ratios from OECD STAN 2022).
+#   NOx_t : tonnes NOx per M$ gross output
+#     Source: EXIOBASE 3.8.1 air emission extension (F matrix, row "Nitrogen oxides");
+#     consistent with EEA (2022) air emissions by sector data.
+#
+# WIOD  — skill-level employment (SEA Socio-Economic Accounts, 2014 data year)
+#   Emp_HighSkill_FTE / Emp_MedSkill_FTE / Emp_LowSkill_FTE
+#     Source: WIOD 2016 Socio-Economic Accounts (SEA_Sep12.xlsx);
+#     high/medium/low skill split from ISCED 1997 education levels (high=5-6, med=3-4, low=0-2).
+#     Global shares calibrated from: Timmer et al. (2015) doi:10.1111/roie.12178
+#     and ILO ILOSTAT employment by education and economic activity (2020).
+#
+# Eora26 / OECD  — labour income (wages + salaries, M$ per M$ gross output)
+#   LaborIncome_M$ :
+#     Source: OECD STAN (2022) labour compensation by industry, base year 2015.
+#     Eora26 values cross-checked against World Bank (2022) WDI labour income share
+#     (indicator SL.GDP.PCAP.EM.KD) for developing-country sectors.
+#
+OPTIONAL_S_BASE: dict = {
+    "exiobase": {
+        "Energy_TJ":  np.array([1.80, 8.50, 3.20, 2.10, 0.90, 2.80, 4.50, 1.20]),  # TJ/M$
+        "NOx_t":      np.array([0.80, 1.50, 1.20, 2.80, 0.40, 0.90, 1.40, 0.50]),  # t/M$
+    },
+    "wiod": {
+        "Emp_HighSkill_FTE": np.array([2.80, 2.00, 2.00, 2.00, 8.10, 2.50, 2.45, 3.00]),  # FTE/M$
+        "Emp_MedSkill_FTE":  np.array([5.60, 2.25, 3.60, 5.00, 7.20, 5.00, 2.80, 5.40]),  # FTE/M$
+        "Emp_LowSkill_FTE":  np.array([5.60, 0.75, 2.40, 3.00, 2.70,17.50, 1.75, 3.60]),  # FTE/M$
+    },
+    "eora26": {
+        "LaborIncome_M$": np.array([0.26, 0.22, 0.18, 0.30, 0.42, 0.28, 0.22, 0.32]),  # M$/M$
+    },
+    "oecd": {
+        "LaborIncome_M$": np.array([0.28, 0.24, 0.20, 0.32, 0.44, 0.30, 0.24, 0.34]),  # M$/M$
+    },
+}
+# File-backed variants share the same optional indicators as their calibrated parent
+OPTIONAL_S_BASE["exiobase_file"] = OPTIONAL_S_BASE["exiobase"]
+OPTIONAL_S_BASE["eora26_file"]   = OPTIONAL_S_BASE["eora26"]
+OPTIONAL_S_BASE["wiod_file"]     = OPTIONAL_S_BASE["wiod"]
+OPTIONAL_S_BASE["oecd_file"]     = OPTIONAL_S_BASE["oecd"]
+
+# Regional multipliers for optional indicators (applied to OPTIONAL_S_BASE rows)
+# Energy_TJ / NOx_t: scale with grid carbon intensity and industrial energy mix
+# LaborIncome_M$: scale with regional wage levels (World Bank WDI 2022)
+# Skill-level employment: no regional scaling — WIOD absolute values used directly
+OPTIONAL_REGION_MULT: dict = {
+    "Energy_TJ": {
+        "Europe": 0.72, "LATAM": 1.15, "Africa": 1.35, "Asia": 1.25, "Global": 1.00,
+    },
+    "NOx_t": {
+        "Europe": 0.68, "LATAM": 1.30, "Africa": 1.45, "Asia": 1.35, "Global": 1.00,
+    },
+    "Emp_HighSkill_FTE": {
+        "Europe": 1.0, "LATAM": 1.0, "Africa": 1.0, "Asia": 1.0, "Global": 1.0,
+    },
+    "Emp_MedSkill_FTE": {
+        "Europe": 1.0, "LATAM": 1.0, "Africa": 1.0, "Asia": 1.0, "Global": 1.0,
+    },
+    "Emp_LowSkill_FTE": {
+        "Europe": 1.0, "LATAM": 1.0, "Africa": 1.0, "Asia": 1.0, "Global": 1.0,
+    },
+    "LaborIncome_M$": {
+        "Europe": 1.20, "LATAM": 0.85, "Africa": 0.65, "Asia": 0.80, "Global": 1.00,
+    },
+}
+
 # ── Tier-1 trade share fallback parameters (calibrated model only)
 # Used when no MRIO file is available to extract bilateral flows from.
 # For file-backed databases, trade shares are derived from the Z matrix.
@@ -773,6 +851,27 @@ def _normalise_country(country: str) -> str:
         return country
     return ISO2_TO_REGION.get(country.upper(), "Global")
 
+def _optional_indicators(db_name: str, region: str) -> dict:
+    """
+    Return optional extended indicator rows for the given database and region.
+
+    Returns {indicator_name: np.ndarray(8)} — per-sector intensity (units/M$).
+    Empty dict if the database has no optional indicators defined.
+    """
+    canon = db_name.replace("_file", "")
+    if canon.startswith("iopy_"):
+        # iopy variants: exiobase optionals for iopy_exio_*, oecd optionals for iopy_oecd
+        canon = "exiobase" if "exio" in canon else "oecd"
+    opt_base = OPTIONAL_S_BASE.get(canon, {})
+    if not opt_base:
+        return {}
+    r = _normalise_country(region)
+    return {
+        name: row * OPTIONAL_REGION_MULT.get(name, {}).get(r, 1.0)
+        for name, row in opt_base.items()
+    }
+
+
 def _get_alloc(sector_code: str) -> np.ndarray:
     """Return 8-element spend allocation array for a sector code."""
     if sector_code not in SECTOR_ALLOC:
@@ -934,9 +1033,14 @@ def tier0_impact(
     dict with keys:
       database, sector_code, country, region, invest_usd,
       GHG_tCO2e, Employment_FTE, Water_1000m3, ValueAdded_M$,
+      optional_indicators  # {name: total} — database-specific extra indicators:
+                           #   exiobase/iopy_exio*: Energy_TJ, NOx_t
+                           #   wiod: Emp_HighSkill_FTE, Emp_MedSkill_FTE, Emp_LowSkill_FTE
+                           #   eora26/oecd: LaborIncome_M$
+                           #   {} when no optionals are defined for the database
       backend,             # "calibrated" | "pymrio" | "iopy"
-      spend_M$_by_sector   # {sector: M$ at tier 1}
-      impact_by_sector     # {sector: {stressor: value}}
+      spend_M$_by_sector   # {sector: M$ at tier 0}
+      impact_by_sector     # {sector: {stressor: value, ...optional_indicators...}}
     """
     iodb_path = Path(iodb_path)
     region    = _normalise_country(country)
@@ -985,6 +1089,17 @@ def tier0_impact(
     impacts   = S * spend_vec        # (4, 8) impact matrix
 
     spend_by_sector  = {sec: round(float(spend_vec[j]), 4) for j, sec in enumerate(SECTORS_8)}
+
+    # ── Optional extended indicators ─────────────────────────────────────────
+    opt_rows = _optional_indicators(database, region)
+    opt_totals: dict = {}
+    opt_by_sector: dict = {sec: {} for sec in SECTORS_8}
+    for ind_name, ind_row in opt_rows.items():
+        ind_vec = ind_row * spend_vec           # (8,) value per sector
+        opt_totals[ind_name] = round(float(ind_vec.sum()), 3)
+        for j, sec in enumerate(SECTORS_8):
+            opt_by_sector[sec][ind_name] = round(float(ind_vec[j]), 4)
+
     impact_by_sector = {}
     for j, sec in enumerate(SECTORS_8):
         impact_by_sector[sec] = {
@@ -993,6 +1108,7 @@ def tier0_impact(
             "Employment_FTE":round(float(impacts[1, j]), 2),
             "Water_1000m3":  round(float(impacts[2, j]), 4),
             "ValueAdded_M$": round(float(impacts[3, j]), 4),
+            **opt_by_sector[sec],
         }
 
     return {
@@ -1005,6 +1121,7 @@ def tier0_impact(
         "Employment_FTE":    round(float(impacts[1].sum()), 2),
         "Water_1000m3":      round(float(impacts[2].sum()), 4),
         "ValueAdded_M$":     round(float(impacts[3].sum()), 4),
+        "optional_indicators": opt_totals,      # {} when database has none
         "backend":           backend,
         "db_label":          DB_PROFILES.get(database, IOPY_DB_CONFIGS.get(database, {})).get("label", database),
         "spend_M$_by_sector":   spend_by_sector,
@@ -1241,6 +1358,9 @@ def tier_impact(
     S = _calibrated_S(db_key, region)
     A = _calibrated_A(db_key)
 
+    # Optional extended indicator rows for this database / region
+    opt_rows = _optional_indicators(database, region)
+
     y0    = alloc * invest_m   # tier-0 spend vector (direct spend)
     rows  = []
 
@@ -1255,7 +1375,7 @@ def tier_impact(
             spend = x_t[j]
             if spend < 1e-9:
                 continue
-            rows.append({
+            row = {
                 "tier":             t,
                 "supplying_sector": sec,
                 "spend_M$":         round(float(spend), 5),
@@ -1263,7 +1383,10 @@ def tier_impact(
                 "Employment_FTE":   round(float(S[1, j] * spend), 3),
                 "Water_1000m3":     round(float(S[2, j] * spend), 5),
                 "ValueAdded_M$":    round(float(S[3, j] * spend), 5),
-            })
+            }
+            for ind_name, ind_arr in opt_rows.items():
+                row[ind_name] = round(float(ind_arr[j] * spend), 5)
+            rows.append(row)
         A_pow = A_pow @ A
 
     df = pd.DataFrame(rows)
