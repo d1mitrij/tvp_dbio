@@ -30,6 +30,19 @@
 
 ## 1. Indicator Framework
 
+### Tier convention
+
+| Tier | Who | What |
+|------|-----|------|
+| **Tier 0** | Asset owner / investor | One-time CAPEX transaction to acquire or commission the asset (railroad, hospital, power plant). The investment flows to the investor's **direct procurement categories** — construction contractors, equipment manufacturers (rolling stock, medical devices, turbines) contracted directly, energy utilities. These are the entities that directly invoice the project owner. |
+| **Tier 1** | Tier 0 contractors | The supply chain triggered by the Tier 0 payment. Tier 0 contractors procure inputs from their own upstream suppliers — steel mills supply the civil works contractor, semiconductor fabs supply the signalling manufacturer, copper mines supply the turbine winder. |
+| **Tier n** | Suppliers n steps upstream | Each successive Leontief round: the suppliers of the suppliers of … the investor's direct contractors. |
+
+The `SECTOR_ALLOC` vector distributes the investor's CAPEX across the direct procurement
+categories at Tier 0. For Rail_Dev this is: civil works 35%, directly contracted equipment
+manufacturers 28%, energy utilities 10%, logistics 10%, quarry/ballast 8%, and minor shares
+for safety, waste, and vegetation management.
+
 ### How indicators are computed
 
 The library uses a **Leontief power-series decomposition** over a calibrated 8-sector global
@@ -37,7 +50,7 @@ model. For a given tier `n`, the supply-chain output vector is:
 
 ```
 yₙ = Aⁿ · y₀          (M$ of gross output per sector at tier n)
-y₀ = SECTOR_ALLOC × invest_M$
+y₀ = SECTOR_ALLOC × invest_M$     ← Tier 0: investor's direct CAPEX
 ```
 
 Stressor impacts at tier `n` are then:
@@ -102,8 +115,8 @@ sector, expressed in CO₂-equivalent using **IPCC AR6 GWP100** factors:
 
 | Tier | GHG scope | Description |
 |------|-----------|-------------|
-| Tier 0 | Scope 3 (Category 1) | Purchased goods and services: direct suppliers |
-| Tier 1 | Scope 3 (Category 1) | Suppliers of direct suppliers |
+| Tier 0 | Scope 3 (Category 1) | Investor's CAPEX to direct procurement categories (contractors, equipment manufacturers, utilities) |
+| Tier 1 | Scope 3 (Category 1) | Upstream suppliers to Tier 0 contractors (steel mills, cement plants, raw materials) |
 | Tiers 2+ | Scope 3 deep chain | Upstream supply chain convergence |
 | Sum T0–T10 | Full upstream embodied | Converges to full Leontief inverse |
 

@@ -12,9 +12,9 @@ The supply-chain tier convention:
 
 | Tier | Definition |
 |------|-----------|
-| **Tier 0** | One-time direct transaction — no Leontief inversion (`y₀ = SECTOR_ALLOC × invest_M$`) |
-| **Tier 1** | First upstream round (`y₁ = A · y₀`) with bilateral sourcing-country breakdown |
-| **Tier n** | nth upstream round (`yₙ = Aⁿ · y₀`) |
+| **Tier 0** | Asset owner's one-time CAPEX transaction to acquire or commission the asset — investment distributed across direct procurement categories (contractors, equipment manufacturers, utilities directly contracted by the investor); no Leontief inversion (`y₀ = SECTOR_ALLOC × invest_M$`) |
+| **Tier 1** | Supply chain triggered by the Tier 0 payment — what Tier 0 contractors buy from their upstream suppliers (steel mills, cement plants, raw materials); first Leontief round with bilateral sourcing-country breakdown (`y₁ = A · y₀`) |
+| **Tier n** | nth upstream round (`yₙ = Aⁿ · y₀`) — each tier captures the suppliers' suppliers, n steps removed from the original CAPEX |
 
 Two scripts do all the work:
 
@@ -179,10 +179,13 @@ Global average intensities per M$ of gross output:
 
 ---
 
-### Tier 0 computation (direct impact)
+### Tier 0 computation (asset owner's CAPEX transaction)
 
-**Tier 0 = the investment amount split across 8 sectors × intensity coefficients.
-No Leontief inversion — purely the first-round direct effect.**
+**Tier 0 = the asset owner's one-time CAPEX transaction.**  The investor acquires
+or commissions the asset (railroad, hospital, power plant) by paying the direct
+procurement categories — construction contractors, equipment manufacturers
+(rolling stock, medical devices, turbines) contracted directly, energy utilities,
+logistics providers.  No Leontief inversion — purely the direct procurement effect.
 
 ```
 y0[j] = SECTOR_ALLOC[sector_code][j] × invest_M$       (8-vector, M$ per sector)
@@ -212,9 +215,9 @@ x_t = A^t · y0            (output vector at tier t)
 impact_t = S · diag(x_t)  (stressor impact at tier t)
 ```
 
-Tier 0 = direct spend (`y0`).
-Tier 1 = what tier-0 suppliers buy from upstream.
-Tier 2 = what tier-1 suppliers buy, and so on.
+Tier 0 = the investor's CAPEX to the direct procurement categories.
+Tier 1 = what those Tier 0 contractors buy from their own upstream suppliers.
+Tier 2 = what Tier 1 suppliers buy, and so on.
 
 Column sums of A ≈ 0.4 → geometric convergence ~60% captured by tier 0, ~85% by tier 2,
 >99.9% by tier 8.

@@ -67,31 +67,36 @@ SUPPLY-CHAIN TIER LOGIC
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 A "tier" identifies how many supply-chain steps separate a production activity
-from the original investment.  The project makes a one-time direct spend
-(Tier 0) which triggers a supply chain.  The SECTOR_ALLOC vector distributes
-this spend across 8 sectors — conceptually it is still one direct transaction
-(the investment) even though it fans across multiple sector categories.
+from the original investment.
 
   Tier 0  →  tier0_impact()
-      The direct spend — a one-time transaction in one or more sectors in one
-      country.  The investment amount (CAPEX) is split across supplying sectors
-      via SECTOR_ALLOC and multiplied by regional stressor intensities.
-      No Leontief inversion:
+      The asset owner / investor makes a one-time CAPEX transaction to acquire
+      or commission the asset (a railroad, hospital, or power plant).  This
+      payment flows to the investor's direct procurement categories — main civil
+      works contractors, equipment manufacturers (rolling stock, medical devices,
+      turbines), energy utilities, logistics providers — as defined by the project
+      SECTOR_ALLOC vector.  No Leontief inversion:
 
           y₀ = SECTOR_ALLOC × invest_M$
           impact₀ = S · diag(y₀)
 
-      For Rail_Dev: the construction contractors, steel mills, and electrical
-      equipment suppliers that directly invoice the project developer.
+      For Rail_Dev: the civil works contractor (35 %), the rolling-stock /
+      signalling manufacturer (28 %), energy utility for catenary (10 %),
+      transport / logistics services (10 %), quarry / ballast supplier (8 %),
+      plus minor shares for health-safety, waste, and vegetation services.
+      These are the entities that directly invoice the project owner.
 
   Tier 1  →  tier1_impact()
-      The supply chain arising from the direct spend — the suppliers of those
-      direct suppliers, from different sectors and different countries.
+      The supply chain triggered by the Tier 0 CAPEX payment.  The Tier 0
+      contractors and manufacturers now go out and procure inputs from their
+      own upstream suppliers — steel mills supply the civil works contractor,
+      iron ore mines supply the steel mill, semiconductor fabs supply the
+      signalling manufacturer — from different sectors and different countries.
       One Leontief round applied to y₀:
 
           y₁ = A · y₀
 
-      tier1_impact() additionally attributes each sector's spend to its
+      tier1_impact() additionally attributes each sector's tier-1 spend to its
       sourcing country using bilateral trade shares derived from OECD TiVA
       (or from the MRIO Z matrix when file-backed databases are loaded).
 
@@ -1162,7 +1167,7 @@ def tier1_impact(
     -------
     dict with keys:
       database, sector_code, country, region, invest_usd,
-      GHG_tCO2e, Employment_FTE, Water_1000m3, ValueAdded_M$,  # tier 2 totals
+      GHG_tCO2e, Employment_FTE, Water_1000m3, ValueAdded_M$,  # tier 1 totals
       backend,
       tier1_by_sector   # {sector: {sourcing_region: {share, spend_M$, GHG_tCO2e, ...}}}
       sourcing_summary  # {sourcing_region: {spend_M$, GHG_tCO2e, ...}}  aggregated
@@ -1182,12 +1187,12 @@ def tier1_impact(
     alloc    = _get_alloc(sector_code)
     invest_m = invest_usd / 1e6
 
-    # ── Tier 1 → Tier 2 intermediate demand ──────────────────────────────────
+    # ── Tier 0 CAPEX spend → Tier 1 upstream demand ─────────────────────────
     A  = _calibrated_A(db_key)
-    y1 = alloc * invest_m   # (8,) tier 1 spend vector (direct suppliers)
-    y2 = A @ y1             # (8,) tier 2 intermediate demand per sector
+    y0 = alloc * invest_m   # (8,) tier-0 CAPEX vector (direct procurement)
+    y1 = A @ y0             # (8,) tier-1 upstream demand (suppliers' purchases)
 
-    # ── Allocate each sector's tier-2 spend across sourcing regions ──────────
+    # ── Allocate each sector's tier-1 spend across sourcing regions ──────────
     # Extract from Z matrix when file-backed; fall back to A-matrix derivation
     trade_table = _get_trade_shares(database, iodb_path, region)
 
@@ -1200,12 +1205,12 @@ def tier1_impact(
 
     tier1_by_sector: dict = {}
     for j, sec in enumerate(SECTORS_8):
-        spend_t2   = float(y2[j])
+        spend_t1   = float(y1[j])
         sec_shares = trade_table.get(sec, {region: 1.0})
         sec_result = {}
         for src_region, share in sec_shares.items():
             S_src      = _calibrated_S(db_key, src_region)
-            spend_src  = spend_t2 * share
+            spend_src  = spend_t1 * share
             ghg        = float(S_src[0, j] * spend_src)
             emp        = float(S_src[1, j] * spend_src)
             wat        = float(S_src[2, j] * spend_src)
