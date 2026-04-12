@@ -1168,8 +1168,12 @@ def tier1_impact(
     dict with keys:
       database, sector_code, country, region, invest_usd,
       GHG_tCO2e, Employment_FTE, Water_1000m3, ValueAdded_M$,  # tier 1 totals
+      optional_indicators,  # {name: total} — database-specific extra indicators
+                            #   (same set as tier0; {} when database has none)
       backend,
-      tier1_by_sector   # {sector: {sourcing_region: {share, spend_M$, GHG_tCO2e, ...}}}
+      tier1_by_sector   # {sector: {sourcing_region: {share, spend_M$, GHG_tCO2e,
+                        #   Employment_FTE, Water_1000m3, ValueAdded_M$,
+                        #   + optional indicator values when supported by the database}}}
       sourcing_summary  # {sourcing_region: {spend_M$, GHG_tCO2e, ...}}  aggregated
     """
     iodb_path = Path(iodb_path)
@@ -1203,6 +1207,13 @@ def tier1_impact(
         for r in _all_regions
     }
 
+    # Determine which optional indicators this database supports (may be empty)
+    _opt_names = list(_optional_indicators(database, region).keys())
+    opt_grand: dict = {name: 0.0 for name in _opt_names}
+    for r in _all_regions:
+        for name in _opt_names:
+            sourcing_totals[r][name] = 0.0
+
     tier1_by_sector: dict = {}
     for j, sec in enumerate(SECTORS_8):
         spend_t1   = float(y1[j])
@@ -1215,7 +1226,7 @@ def tier1_impact(
             emp        = float(S_src[1, j] * spend_src)
             wat        = float(S_src[2, j] * spend_src)
             va         = float(S_src[3, j] * spend_src)
-            sec_result[src_region] = {
+            entry = {
                 "share":          round(share, 4),
                 "spend_M$":       round(spend_src, 5),
                 "GHG_tCO2e":      round(ghg, 3),
@@ -1223,12 +1234,23 @@ def tier1_impact(
                 "Water_1000m3":   round(wat, 5),
                 "ValueAdded_M$":  round(va, 5),
             }
-            t = sourcing_totals[src_region]
-            t["spend_M$"]       += spend_src
-            t["GHG_tCO2e"]      += ghg
-            t["Employment_FTE"] += emp
-            t["Water_1000m3"]   += wat
-            t["ValueAdded_M$"]  += va
+            # Optional indicators evaluated at the sourcing region's intensity
+            if _opt_names:
+                opt_src = _optional_indicators(database, src_region)
+                for ind_name, ind_arr in opt_src.items():
+                    val = float(ind_arr[j] * spend_src)
+                    entry[ind_name]                       = round(val, 5)
+                    sourcing_totals[src_region][ind_name]  = (
+                        sourcing_totals[src_region].get(ind_name, 0.0) + val
+                    )
+                    opt_grand[ind_name] = opt_grand.get(ind_name, 0.0) + val
+            sec_result[src_region] = entry
+            sr = sourcing_totals[src_region]
+            sr["spend_M$"]       += spend_src
+            sr["GHG_tCO2e"]      += ghg
+            sr["Employment_FTE"] += emp
+            sr["Water_1000m3"]   += wat
+            sr["ValueAdded_M$"]  += va
         tier1_by_sector[sec] = sec_result
 
     # Drop regions with zero spend; round the rest
@@ -1246,19 +1268,20 @@ def tier1_impact(
     trade_backend = "pymrio" if database in PYMRIO_LOADERS else "calibrated"
 
     return {
-        "database":         database,
-        "sector_code":      sector_code,
-        "country":          country,
-        "region":           region,
-        "invest_usd":       invest_usd,
-        "GHG_tCO2e":        grand_ghg,
-        "Employment_FTE":   grand_emp,
-        "Water_1000m3":     grand_wat,
-        "ValueAdded_M$":    grand_va,
-        "backend":          trade_backend,
-        "db_label":         DB_PROFILES.get(db_key, {}).get("label", database),
-        "tier1_by_sector":  tier1_by_sector,
-        "sourcing_summary": sourcing_summary,
+        "database":            database,
+        "sector_code":         sector_code,
+        "country":             country,
+        "region":              region,
+        "invest_usd":          invest_usd,
+        "GHG_tCO2e":           grand_ghg,
+        "Employment_FTE":      grand_emp,
+        "Water_1000m3":        grand_wat,
+        "ValueAdded_M$":       grand_va,
+        "optional_indicators": {k: round(v, 3) for k, v in opt_grand.items()},
+        "backend":             trade_backend,
+        "db_label":            DB_PROFILES.get(db_key, {}).get("label", database),
+        "tier1_by_sector":     tier1_by_sector,
+        "sourcing_summary":    sourcing_summary,
     }
 
 
@@ -1340,8 +1363,19 @@ def tier_impact(
 
     Returns a DataFrame with columns:
       database, sector_code, country, region, invest_usd,
-      tier, supplying_sector, spend_M$, GHG_tCO2e,
-      Employment_FTE, Water_1000m3, ValueAdded_M$
+      tier, supplying_sector, sourcing_country, trade_share,
+      spend_M$, GHG_tCO2e, Employment_FTE, Water_1000m3, ValueAdded_M$
+      [+ optional indicator columns for databases that support them]
+
+    Notes
+    -----
+    Tier 0 sourcing_country = project region (direct CAPEX stays in project
+    country; no cross-border trade has occurred yet).
+    Tiers 1–N sourcing_country is derived from bilateral trade shares (OECD
+    TiVA calibration or Z-matrix extraction for file-backed databases).
+    Each row represents one (tier, supplying_sector, sourcing_country) triplet.
+    To reproduce the original tier × sector totals, group by [tier, supplying_sector]
+    and sum spend_M$ / indicator columns.
     """
     if tier_from < 0:
         raise ValueError(f"tier_from must be >= 0, got {tier_from}")
@@ -1360,14 +1394,15 @@ def tier_impact(
     if db_key not in DB_PROFILES:
         raise ValueError(f"Unknown database '{database}'")
 
-    S = _calibrated_S(db_key, region)
     A = _calibrated_A(db_key)
-
-    # Optional extended indicator rows for this database / region
-    opt_rows = _optional_indicators(database, region)
 
     y0    = alloc * invest_m   # tier-0 spend vector (direct spend)
     rows  = []
+
+    # Bilateral trade shares — same structure applied at every tier.
+    # Tier 0 is special: direct CAPEX stays in the project country (no trade yet).
+    # Tiers 1–N distribute each sector's upstream demand across sourcing regions.
+    trade_shares = _get_trade_shares(database, iodb_path, region)
 
     # Pre-advance A_pow to A^tier_from so tier n uses Aⁿ · y0
     A_pow = np.eye(NSEC)
@@ -1377,21 +1412,37 @@ def tier_impact(
     for t in range(tier_from, tier_to + 1):
         x_t = A_pow @ y0
         for j, sec in enumerate(SECTORS_8):
-            spend = x_t[j]
-            if spend < 1e-9:
+            spend_total = x_t[j]
+            if spend_total < 1e-9:
                 continue
-            row = {
-                "tier":             t,
-                "supplying_sector": sec,
-                "spend_M$":         round(float(spend), 5),
-                "GHG_tCO2e":        round(float(S[0, j] * spend), 3),
-                "Employment_FTE":   round(float(S[1, j] * spend), 3),
-                "Water_1000m3":     round(float(S[2, j] * spend), 5),
-                "ValueAdded_M$":    round(float(S[3, j] * spend), 5),
-            }
-            for ind_name, ind_arr in opt_rows.items():
-                row[ind_name] = round(float(ind_arr[j] * spend), 5)
-            rows.append(row)
+
+            # Tier 0: direct CAPEX stays in project region (no cross-border trade yet).
+            # Tiers >= 1: distribute across sourcing regions via bilateral trade shares.
+            if t == 0:
+                sec_shares = {region: 1.0}
+            else:
+                sec_shares = trade_shares.get(sec, {region: 1.0})
+
+            for src_region, share in sec_shares.items():
+                spend_src = spend_total * share
+                if spend_src < 1e-10:
+                    continue
+                S_src   = _calibrated_S(db_key, src_region)
+                opt_src = _optional_indicators(database, src_region)
+                row = {
+                    "tier":             t,
+                    "supplying_sector": sec,
+                    "sourcing_country": src_region,
+                    "trade_share":      round(share, 4),
+                    "spend_M$":         round(float(spend_src), 5),
+                    "GHG_tCO2e":        round(float(S_src[0, j] * spend_src), 3),
+                    "Employment_FTE":   round(float(S_src[1, j] * spend_src), 3),
+                    "Water_1000m3":     round(float(S_src[2, j] * spend_src), 5),
+                    "ValueAdded_M$":    round(float(S_src[3, j] * spend_src), 5),
+                }
+                for ind_name, ind_arr in opt_src.items():
+                    row[ind_name] = round(float(ind_arr[j] * spend_src), 5)
+                rows.append(row)
         A_pow = A_pow @ A
 
     df = pd.DataFrame(rows)
@@ -1573,7 +1624,7 @@ if __name__ == "__main__":
     )
     print(df[["GHG_tCO2e", "Employment_FTE", "Water_1000m3", "ValueAdded_M$"]].to_string())
 
-    # ── 4. Tier-by-tier decomposition
+    # ── 4. Tier-by-tier decomposition with sector × country breakdown
     print("\n[4] Tier decomposition 0→4 (hospitals, Africa, $250M, Eora26):")
     tiers = tier_impact(
         invest_usd  = 250_000_000,
@@ -1584,7 +1635,19 @@ if __name__ == "__main__":
         tier_from   = 0,
         tier_to     = 4,
     )
-    tier_summary = tiers.groupby("tier")[["spend_M$", "GHG_tCO2e", "Employment_FTE"]].sum()
+    tier_summary = (tiers.groupby("tier")[["spend_M$", "GHG_tCO2e", "Employment_FTE"]]
+                    .sum().round(2))
     print(tier_summary.to_string())
+
+    print("\n  Tier 1 — breakdown by supplying sector × sourcing country:")
+    t1 = tiers[tiers["tier"] == 1].sort_values(["supplying_sector", "sourcing_country"])
+    print(t1[["supplying_sector", "sourcing_country", "trade_share",
+              "spend_M$", "GHG_tCO2e", "Employment_FTE"]].to_string(index=False))
+
+    print("\n  Trade flows — sourcing country totals per tier:")
+    flow_summary = (tiers.groupby(["tier", "sourcing_country"])
+                    [["spend_M$", "GHG_tCO2e", "Employment_FTE"]]
+                    .sum().round(2))
+    print(flow_summary.to_string())
 
     print("\nDone.\n")
