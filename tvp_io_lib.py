@@ -333,6 +333,8 @@ Source:
 
 from __future__ import annotations
 
+__version__ = "0.1.0"
+
 import warnings
 import numpy as np
 import pandas as pd

@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# ── Package metadata ──────────────────────────────────────────────────────────
+[project]
+name = "tvp-dbio"
+version = "0.1.0"
+description = "Supply-chain impact analysis for infrastructure investments (MRIO / IO tables)"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [
+    { name = "Dimitrij Euler" }
+]
+keywords = [
+    "MRIO", "supply chain", "infrastructure", "emissions",
+    "input-output", "Leontief", "IO analysis",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+
+# Core dependencies — always required
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+]
+
+# ── Optional backends ─────────────────────────────────────────────────────────
+[project.optional-dependencies]
+pymrio    = ["pymrio>=0.6.3"]
+iopy      = ["iopy>=0.2.4"]
+full      = ["pymrio>=0.6.3", "iopy>=0.2.4"]
+notebooks = [
+    "matplotlib>=3.8",
+    "jupyterlab>=4.0",
+    "ipykernel>=6.0",
+    "nbformat>=5.9",
+]
+
+# ── URLs ──────────────────────────────────────────────────────────────────────
+[project.urls]
+Repository   = "https://github.com/d1mitrij/tvp_dbio"
+"Bug Tracker" = "https://github.com/d1mitrij/tvp_dbio/issues"
+
+# ── What setuptools includes in the wheel ────────────────────────────────────
+# Flat layout: both modules live at the repo root.
+[tool.setuptools]
+py-modules = ["tvp_io_lib", "download_iodb"]
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
